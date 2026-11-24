@@ -1,0 +1,1441 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CyberCasa — Auditoria IoT Pixel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-app: #0f172a;
+      --bg-panel: #1e293b;
+      --bg-card: #263349;
+      --border: #334155;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent: #38bdf8;
+      --safe: #10b981;
+      --safe-bg: rgba(16, 185, 129, 0.15);
+      --vuln: #f59e0b;
+      --vuln-bg: rgba(245, 158, 11, 0.15);
+      --threat: #ef4444;
+      --threat-bg: rgba(239, 68, 68, 0.15);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-app);
+      color: var(--text-main);
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+
+    .pixel-font {
+      font-family: 'Silkscreen', monospace;
+      letter-spacing: -0.5px;
+    }
+
+    /* Header */
+    header {
+      background: var(--bg-panel);
+      border-bottom: 2px solid var(--border);
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .brand-icon {
+      width: 36px;
+      height: 36px;
+      background: var(--accent);
+      border-radius: 6px;
+      display: grid;
+      place-items: center;
+      color: #0f172a;
+      font-weight: bold;
+      box-shadow: 0 3px 0 #0284c7;
+    }
+
+    .brand h1 {
+      font-size: 1.25rem;
+      color: var(--text-main);
+    }
+
+    .brand span {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      display: block;
+    }
+
+    .hud-stats {
+      display: flex;
+      gap: 1.5rem;
+      align-items: center;
+    }
+
+    .stat-box {
+      background: var(--bg-app);
+      border: 1px solid var(--border);
+      padding: 0.4rem 0.9rem;
+      border-radius: 8px;
+      text-align: center;
+    }
+
+    .stat-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      letter-spacing: 0.05em;
+    }
+
+    .stat-value {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    /* Main Layout */
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 420px;
+      gap: 1.5rem;
+      padding: 1.5rem 2rem;
+      max-width: 1440px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    @media (max-width: 1024px) {
+      main {
+        grid-template-columns: 1fr;
+        padding: 1rem;
+      }
+    }
+
+    /* Left: Room Explorer */
+    .viewport-container {
+      background: var(--bg-panel);
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+    }
+
+    .room-tabs {
+      display: flex;
+      background: #162032;
+      border-bottom: 2px solid var(--border);
+      overflow-x: auto;
+    }
+
+    .room-tab {
+      flex: 1;
+      padding: 0.9rem 1rem;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-family: 'Silkscreen', monospace;
+      font-size: 0.85rem;
+      cursor: pointer;
+      border-bottom: 3px solid transparent;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      white-space: nowrap;
+    }
+
+    .room-tab:hover {
+      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .room-tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+      background: var(--bg-panel);
+    }
+
+    .tab-badge {
+      font-family: 'Inter', sans-serif;
+      font-size: 0.7rem;
+      padding: 0.1rem 0.45rem;
+      border-radius: 99px;
+      background: var(--bg-app);
+      color: var(--text-muted);
+    }
+
+    .tab-badge.done {
+      background: var(--safe-bg);
+      color: var(--safe);
+    }
+
+    .scene-wrapper {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 10;
+      background: #1a2234;
+      user-select: none;
+    }
+
+    canvas#roomCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+
+    /* Interactive Hotspots over Canvas */
+    .hotspot {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      transition: transform 0.15s ease;
+      z-index: 10;
+    }
+
+    .hotspot:hover {
+      transform: translate(-50%, -55%) scale(1.06);
+    }
+
+    .hotspot-ring {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      background: rgba(15, 23, 42, 0.65);
+      border: 2px solid rgba(255, 255, 255, 0.5);
+      backdrop-filter: blur(2px);
+      display: grid;
+      place-items: center;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      animation: pulse 2.2s infinite;
+    }
+
+    .hotspot.selected .hotspot-ring {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.35);
+      animation: none;
+    }
+
+    .hotspot.audited-safe .hotspot-ring {
+      border-color: var(--safe);
+      background: rgba(16, 185, 129, 0.25);
+      animation: none;
+    }
+
+    .hotspot.audited-vuln .hotspot-ring {
+      border-color: var(--vuln);
+      background: rgba(245, 158, 11, 0.25);
+      animation: none;
+    }
+
+    .hotspot.audited-threat .hotspot-ring {
+      border-color: var(--threat);
+      background: rgba(239, 68, 68, 0.25);
+      animation: none;
+    }
+
+    .hotspot-tag {
+      background: rgba(15, 23, 42, 0.9);
+      color: var(--text-main);
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      white-space: nowrap;
+      pointer-events: none;
+    }
+
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.45); }
+      50% { box-shadow: 0 0 0 8px rgba(56, 189, 248, 0); }
+    }
+
+    .scene-footer {
+      padding: 0.75rem 1.25rem;
+      background: #162032;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+    }
+
+    /* Right: Inspector Panel */
+    .inspector-panel {
+      background: var(--bg-panel);
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+    }
+
+    .empty-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      color: var(--text-muted);
+      gap: 1rem;
+      padding: 2rem 1rem;
+    }
+
+    .device-header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .device-sprite-preview {
+      width: 64px;
+      height: 64px;
+      background: var(--bg-app);
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+    }
+
+    .device-sprite-preview canvas {
+      width: 48px;
+      height: 48px;
+      image-rendering: pixelated;
+    }
+
+    .device-title h2 {
+      font-size: 1.1rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .device-ip {
+      font-family: monospace;
+      font-size: 0.8rem;
+      color: var(--accent);
+      background: rgba(56, 189, 248, 0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .tech-specs {
+      background: var(--bg-app);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.9rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
+      font-size: 0.84rem;
+    }
+
+    .spec-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      border-bottom: 1px dashed rgba(255, 255, 255, 0.06);
+      padding-bottom: 0.4rem;
+    }
+
+    .spec-row:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .spec-key {
+      color: var(--text-muted);
+    }
+
+    .spec-val {
+      font-weight: 500;
+      text-align: right;
+      color: var(--text-main);
+    }
+
+    .logs-box {
+      background: #0b1120;
+      border: 1px solid #1e293b;
+      border-left: 3px solid var(--accent);
+      border-radius: 6px;
+      padding: 0.75rem;
+      font-family: monospace;
+      font-size: 0.78rem;
+      color: #cbd5e1;
+      line-height: 1.45;
+    }
+
+    .step-title {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 0.6rem;
+      font-weight: 600;
+    }
+
+    /* Classification Buttons */
+    .class-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.6rem;
+    }
+
+    .class-btn {
+      padding: 0.75rem 0.5rem;
+      border-radius: 8px;
+      border: 2px solid var(--border);
+      background: var(--bg-card);
+      color: var(--text-main);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      transition: all 0.15s;
+    }
+
+    .class-btn:hover {
+      transform: translateY(-2px);
+    }
+
+    .class-btn.safe:hover, .class-btn.safe.active {
+      border-color: var(--safe);
+      background: var(--safe-bg);
+      color: var(--safe);
+    }
+
+    .class-btn.vuln:hover, .class-btn.vuln.active {
+      border-color: var(--vuln);
+      background: var(--vuln-bg);
+      color: var(--vuln);
+    }
+
+    .class-btn.threat:hover, .class-btn.threat.active {
+      border-color: var(--threat);
+      background: var(--threat-bg);
+      color: var(--threat);
+    }
+
+    /* Mitigation Options */
+    .options-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
+    }
+
+    .option-card {
+      text-align: left;
+      padding: 0.75rem 0.9rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-main);
+      font-size: 0.84rem;
+      cursor: pointer;
+      transition: all 0.15s;
+      line-height: 1.35;
+    }
+
+    .option-card:hover {
+      border-color: var(--accent);
+      background: #2d3c56;
+    }
+
+    .option-card.selected {
+      border-color: var(--accent);
+      background: rgba(56, 189, 248, 0.15);
+    }
+
+    .submit-btn {
+      width: 100%;
+      padding: 0.85rem;
+      border: none;
+      border-radius: 8px;
+      background: var(--accent);
+      color: #0f172a;
+      font-family: 'Silkscreen', monospace;
+      font-size: 0.9rem;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 0 #0284c7;
+      transition: transform 0.1s;
+    }
+
+    .submit-btn:hover:not(:disabled) {
+      filter: brightness(1.08);
+    }
+
+    .submit-btn:active:not(:disabled) {
+      transform: translateY(2px);
+      box-shadow: 0 2px 0 #0284c7;
+    }
+
+    .submit-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    /* Feedback Banner */
+    .feedback-box {
+      padding: 1rem;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      line-height: 1.45;
+      border: 1px solid;
+    }
+
+    .feedback-box.correct {
+      background: var(--safe-bg);
+      border-color: var(--safe);
+      color: #d1fae5;
+    }
+
+    .feedback-box.partial {
+      background: var(--vuln-bg);
+      border-color: var(--vuln);
+      color: #fef3c7;
+    }
+
+    .feedback-box.wrong {
+      background: var(--threat-bg);
+      border-color: var(--threat);
+      color: #fee2e2;
+    }
+
+    /* Modal Final Report */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(4px);
+      display: none;
+      place-items: center;
+      z-index: 100;
+      padding: 1rem;
+    }
+
+    .modal-overlay.open {
+      display: grid;
+    }
+
+    .modal-card {
+      background: var(--bg-panel);
+      border: 2px solid var(--accent);
+      border-radius: 14px;
+      max-width: 540px;
+      width: 100%;
+      padding: 2rem;
+      text-align: center;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+    }
+
+    .modal-card h2 {
+      font-size: 1.5rem;
+      color: var(--accent);
+      margin-bottom: 0.5rem;
+    }
+
+    .score-circle {
+      width: 110px;
+      height: 110px;
+      border-radius: 50%;
+      border: 4px solid var(--safe);
+      display: grid;
+      place-items: center;
+      margin: 1.25rem auto;
+      font-size: 1.75rem;
+      font-weight: 700;
+      background: var(--bg-app);
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.75rem;
+      margin: 1.25rem 0;
+    }
+
+    .summary-item {
+      background: var(--bg-app);
+      padding: 0.75rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <div class="brand-icon pixel-font">IoT</div>
+      <div>
+        <h1 class="pixel-font">CYBERCASA // AUDITORIA</h1>
+        <span>Inspecione os cômodos, classifique os riscos e proteja a rede doméstica</span>
+      </div>
+    </div>
+
+    <div class="hud-stats">
+      <div class="stat-box">
+        <div class="stat-label">Auditados</div>
+        <div class="stat-value" id="hudProgress">0 / 9</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Pontuação</div>
+        <div class="stat-value" id="hudScore">0 pts</div>
+      </div>
+      <button class="submit-btn" id="finishEarlyBtn" style="width:auto; padding: 0.6rem 1rem; font-size:0.75rem; display:none;">
+        VER RELATÓRIO
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Esquerda: Cenário Pixel Art -->
+    <section class="viewport-container">
+      <div class="room-tabs" id="roomTabs"></div>
+
+      <div class="scene-wrapper" id="sceneWrapper">
+        <canvas id="roomCanvas" width="320" height="200"></canvas>
+        <div id="hotspotsLayer"></div>
+      </div>
+
+      <div class="scene-footer">
+        <span id="roomDescription">Selecione um dispositivo brilhante no cômodo para inspecionar.</span>
+        <span class="pixel-font" style="color: var(--accent);">PIXEL-SCAN v1.0</span>
+      </div>
+    </section>
+
+    <!-- Direita: Inspetor Técnico -->
+    <aside class="inspector-panel" id="inspectorPanel">
+      <div class="empty-state">
+        <svg width="56" height="56" viewBox="0 0 16 16" shape-rendering="crispEdges">
+          <rect x="3" y="2" width="10" height="12" fill="#334155"/>
+          <rect x="4" y="3" width="8" height="10" fill="#1e293b"/>
+          <rect x="6" y="5" width="4" height="4" fill="#38bdf8"/>
+          <rect x="5" y="10" width="6" height="1" fill="#94a3b8"/>
+        </svg>
+        <h3 class="pixel-font" style="color: var(--text-main); font-size: 1rem;">NENHUM ALVO SELECIONADO</h3>
+        <p style="font-size: 0.85rem; max-width: 280px;">
+          Clique em qualquer dispositivo conectado no cômodo ao lado para ler seus logs de rede, firmware e portas abertas.
+        </p>
+      </div>
+    </aside>
+  </main>
+
+  <!-- Modal Final -->
+  <div class="modal-overlay" id="reportModal">
+    <div class="modal-card">
+      <h2 class="pixel-font">AUDITORIA CONCLUÍDA</h2>
+      <p style="color: var(--text-muted); font-size: 0.9rem;">Resumo da segurança cibernética da residência</p>
+      
+      <div class="score-circle pixel-font" id="finalScoreCircle">0%</div>
+
+      <div class="summary-grid">
+        <div class="summary-item">
+          <div class="stat-label" style="color: var(--safe);">Seguros</div>
+          <div class="stat-value" id="sumSafe" style="color: var(--safe);">0</div>
+        </div>
+        <div class="summary-item">
+          <div class="stat-label" style="color: var(--vuln);">Vulneráveis</div>
+          <div class="stat-value" id="sumVuln" style="color: var(--vuln);">0</div>
+        </div>
+        <div class="summary-item">
+          <div class="stat-label" style="color: var(--threat);">Em Ameaça</div>
+          <div class="stat-value" id="sumThreat" style="color: var(--threat);">0</div>
+        </div>
+      </div>
+
+      <p id="finalVerdict" style="font-size: 0.88rem; color: #cbd5e1; margin-bottom: 1.5rem; line-height: 1.5;"></p>
+
+      <button class="submit-btn" onclick="resetGame()">REINICIAR AUDITORIA</button>
+    </div>
+  </div>
+
+  <script>
+    // ==========================================
+    // 1. ÁUDIO SINTETIZADO RETRO (WEB AUDIO API)
+    // ==========================================
+    const AudioFX = (() => {
+      let ctx = null;
+      const playTone = (freq, type, duration, vol = 0.08) => {
+        try {
+          if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = type;
+          osc.frequency.setValueAtTime(freq, ctx.currentTime);
+          gain.gain.setValueAtTime(vol, ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start();
+          osc.stop(ctx.currentTime + duration);
+        } catch (e) {}
+      };
+      return {
+        click: () => playTone(520, 'square', 0.06),
+        select: () => playTone(680, 'triangle', 0.08),
+        success: () => {
+          playTone(523.25, 'square', 0.09);
+          setTimeout(() => playTone(659.25, 'square', 0.09), 80);
+          setTimeout(() => playTone(783.99, 'square', 0.16), 160);
+        },
+        error: () => {
+          playTone(220, 'sawtooth', 0.14);
+          setTimeout(() => playTone(165, 'sawtooth', 0.2), 110);
+        }
+      };
+    })();
+
+    // ==========================================
+    // 2. DADOS DOS CÔMODOS E DISPOSITIVOS
+    // ==========================================
+    const ROOMS = [
+      {
+        id: 'sala',
+        name: 'Sala de Estar',
+        desc: 'Hub central de entretenimento e roteamento principal da residência.',
+        palette: { wall: '#283655', trim: '#1e2742', floor: '#4a3525', floorAlt: '#3d2b1d' },
+        devices: [
+          {
+            id: 'router',
+            name: 'Roteador Wi-Fi Principal',
+            sprite: 'router',
+            x: 24, y: 54,
+            ip: '192.168.0.1',
+            specs: {
+              'Protocolo Wi-Fi': 'WPA2-PSK (AES)',
+              'Painel Admin': 'admin / admin123 (Padrão)',
+              'UPnP / WPS': 'Habilitados',
+              'Firmware': 'v1.04 (2022)'
+            },
+            log: '[WARN] Tentativas de login externo na porta 8080 (WAN). Credencial padrão de fábrica detectada.',
+            status: 'vuln', // safe | vuln | threat
+            options: [
+              'Desativar acesso remoto WAN, desligar WPS/UPnP e trocar a senha padrão do admin.',
+              'Apenas ocultar o nome da rede (SSID) e manter a senha atual.',
+              'Trocar o cabo de rede por um cabo blindado Cat8.'
+            ],
+            correctOption: 0,
+            explanation: 'O roteador ainda não foi invadido, mas possui **vulnerabilidades críticas** (senha padrão + administração exposta na WAN), deixando a porta aberta para invasores.'
+          },
+          {
+            id: 'smarttv',
+            name: 'Smart TV 4K OLED',
+            sprite: 'tv',
+            x: 54, y: 46,
+            ip: '192.168.0.14',
+            specs: {
+              'Sistema': 'WebOS 24 (Atualizado)',
+              'Criptografia': 'TLS 1.3 Ativo',
+              'Permissões': 'Microfone desativado',
+              'Tráfego': 'Somente Netflix / YouTube'
+            },
+            log: '[INFO] Conexão HTTPS verificada com servidores oficiais. Nenhuma porta de entrada aberta.',
+            status: 'safe',
+            options: [
+              'Nenhuma ação corretiva urgente necessária; manter atualizações automáticas ativas.',
+              'Desconectar da internet permanentemente e usar apenas antena UHF.',
+              'Instalar um antivírus pirata via pendrive USB.'
+            ],
+            correctOption: 0,
+            explanation: 'A Smart TV está **segura**: sistema atualizado, tráfego criptografado legítimo e sensores desnecessários bloqueados.'
+          },
+          {
+            id: 'camera_sala',
+            name: 'Câmera Pet Wi-Fi',
+            sprite: 'camera',
+            x: 82, y: 34,
+            ip: '192.168.0.29',
+            specs: {
+              'Porta Aberta': '554 (RTSP sem senha)',
+              'Tráfego Saída': '4.2 GB/h para IP 185.220.x.x',
+              'CPU': '99% constante',
+              'Protocolo': 'HTTP / Telnet ativo'
+            },
+            log: '[ALERT] Stream de vídeo sendo transmitido para IP desconhecido no exterior e comandos Telnet recebidos!',
+            status: 'threat',
+            options: [
+              'Isolar imediatamente da rede, resetar de fábrica, atualizar firmware e bloquear acesso externo.',
+              'Colocar uma fita adesiva na lente e deixar o Wi-Fi conectado.',
+              'Mudar o nome do dispositivo no aplicativo do celular.'
+            ],
+            correctOption: 0,
+            explanation: 'Este dispositivo está **em ameaça ativa**! Há exfiltração de vídeo em tempo real e uso de CPU típico de botnet (como Mirai).'
+          }
+        ]
+      },
+      {
+        id: 'escritorio',
+        name: 'Home Office',
+        desc: 'Estação de trabalho, armazenamento local e assistente de voz.',
+        palette: { wall: '#243b4a', trim: '#1a2c38', floor: '#3b4252', floorAlt: '#2e3440' },
+        devices: [
+          {
+            id: 'notebook',
+            name: 'Notebook de Trabalho',
+            sprite: 'laptop',
+            x: 34, y: 55,
+            ip: '192.168.0.10',
+            specs: {
+              'Firewall': 'Ativo (Modo Estrito)',
+              'Disco': 'Criptografado (BitLocker)',
+              'VPN': 'WireGuard Conectada',
+              'Patches SO': 'Em dia (Auto-Update)'
+            },
+            log: '[OK] Assinaturas de segurança atualizadas hoje às 08:00. Zero conexões anômalas.',
+            status: 'safe',
+            options: [
+              'Manter boas práticas atuais: VPN corporativa, autenticação MFA e updates automáticos.',
+              'Desativar o firewall para melhorar a velocidade dos downloads.',
+              'Compartilhar a pasta raiz C:\\ na rede local sem senha.'
+            ],
+            correctOption: 0,
+            explanation: 'O notebook está **seguro**, operando com criptografia de disco, firewall ativo, VPN e sistema atualizado.'
+          },
+          {
+            id: 'nas',
+            name: 'Servidor NAS Backup',
+            sprite: 'nas',
+            x: 68, y: 58,
+            ip: '192.168.0.50',
+            specs: {
+              'Protocolo': 'SMBv1 Habilitado',
+              'Autenticação': 'Sem 2FA (Apenas senha)',
+              'Acesso': 'Restrito à LAN interna',
+              'Firmware': 'Desatualizado (CVE-2023)'
+            },
+            log: '[WARN] Protocolo obsoleto SMBv1 ativo na rede local. Nenhuma tentativa de exploração registrada até o momento.',
+            status: 'vuln',
+            options: [
+              'Desativar SMBv1, atualizar para SMBv3, aplicar patch de firmware e ativar 2FA.',
+              'Formatar todos os discos de backup imediatamente.',
+              'Expor o painel do NAS na internet para facilitar acesso fora de casa.'
+            ],
+            correctOption: 0,
+            explanation: 'O NAS está **vulnerável**: o protocolo SMBv1 possui falhas conhecidas exploradas por ransomwares (como WannaCry), exigindo atualização.'
+          },
+          {
+            id: 'speaker',
+            name: 'Smart Speaker Mini',
+            sprite: 'speaker',
+            x: 84, y: 48,
+            ip: '192.168.0.33',
+            specs: {
+              'Conexão': 'TLS 1.3 Mutual Auth',
+              'Botão Mute': 'Físico disponível',
+              'Skills': 'Apenas verificadas',
+              'Atualizações': 'Automáticas via OTA'
+            },
+            log: '[INFO] Pacotes enviados somente após palavra de ativação. Certificados válidos.',
+            status: 'safe',
+            options: [
+              'Manter configuração atual e revisar periodicamente o histórico de comandos de voz.',
+              'Bloquear os servidores DNS da fabricante no roteador.',
+              'Conectar o speaker em uma rede Wi-Fi aberta sem senha.'
+            ],
+            correctOption: 0,
+            explanation: 'O Smart Speaker está **seguro**, utilizando autenticação mútua criptografada e firmware oficial atualizado.'
+          }
+        ]
+      },
+      {
+        id: 'cozinha',
+        name: 'Cozinha Smart',
+        desc: 'Eletrodomésticos conectados e automação residencial.',
+        palette: { wall: '#2d3a3a', trim: '#1f2929', floor: '#475569', floorAlt: '#334155' },
+        devices: [
+          {
+            id: 'geladeira',
+            name: 'Geladeira Smart Hub',
+            sprite: 'fridge',
+            x: 24, y: 48,
+            ip: '192.168.0.41',
+            specs: {
+              'Sistema': 'Android Embedded 9 (Sem suporte)',
+              'Certificados SSL': 'Expirados em 2024',
+              'Rede': 'Mesma VLAN dos PCs',
+              'Navegador': 'WebView desatualizado'
+            },
+            log: '[WARN] Sistema operacional sem patches de segurança há 2 anos. Comunicação em rede sem segmentação.',
+            status: 'vuln',
+            options: [
+              'Isolar a geladeira em uma rede Wi-Fi separada (VLAN IoT / Convidados) sem acesso aos PCs.',
+              'Instalar extensões de navegador na tela da geladeira.',
+              'Conectar a geladeira via cabo diretamente no servidor NAS.'
+            ],
+            correctOption: 0,
+            explanation: 'Como eletrodomésticos antigos param de receber atualizações, eles ficam **vulneráveis**. A melhor defesa é segmentar a rede (VLAN IoT).'
+          },
+          {
+            id: 'fechadura',
+            name: 'Fechadura Smart Porta',
+            sprite: 'lock',
+            x: 56, y: 44,
+            ip: '192.168.0.62',
+            specs: {
+              'Bluetooth': 'BLE 5.2 Criptografado',
+              'Bridge Wi-Fi': 'Firmware 3.8.1 (Atual)',
+              'Logs de Acesso': '2FA + Biometria',
+              'Tentativas Falhas': '0 nos últimos 30 dias'
+            },
+            log: '[OK] Chaves criptográficas rotacionadas automaticamente. Nenhuma anomalia detectada.',
+            status: 'safe',
+            options: [
+              'Manter firmware atualizado e continuar usando biometria + código temporário para visitas.',
+              'Compartilhar o PIN mestre permanente no grupo do condomínio.',
+              'Desativar o bloqueio automático após abertura.'
+            ],
+            correctOption: 0,
+            explanation: 'A fechadura está **segura**, com criptografia moderna, autenticação forte e zero sinais de comprometimento.'
+          },
+          {
+            id: 'tomada',
+            name: 'Tomada Inteligente Cafeteira',
+            sprite: 'plug',
+            x: 80, y: 62,
+            ip: '192.168.0.77',
+            specs: {
+              'App Controle': 'APK modificado (fora da loja)',
+              'Tráfego DNS': 'Consultas a domínios maliciosos',
+              'Varredura': 'Fazendo Port Scan na LAN',
+              'Criptografia': 'Texto plano (HTTP)'
+            },
+            log: '[ALERT] Dispositivo realizando varredura de portas internas (ARP/SYN scan) e comunicando com servidor C2!',
+            status: 'threat',
+            options: [
+              'Desconectar da tomada, revogar permissões, remover o app não oficial e substituir/resetar.',
+              'Apenas apagar o ícone do aplicativo da tela inicial do celular.',
+              'Trocar a cafeteira conectada nela por uma torradeira.'
+            ],
+            correctOption: 0,
+            explanation: 'Dispositivo **em ameaça crítica**! Comprometido por firmware/app malicioso, está atuando como pivô para atacar outros aparelhos da casa.'
+          }
+        ]
+      }
+    ];
+
+    // ==========================================
+    // 3. ESTADO DO JOGO
+    // ==========================================
+    let state = {
+      currentRoomIndex: 0,
+      selectedDeviceId: null,
+      draftClass: null,
+      draftOption: null,
+      score: 0,
+      // deviceId -> { userClass, userOption, isClassCorrect, isOptionCorrect, points }
+      audits: {}
+    };
+
+    // ==========================================
+    // 4. MOTOR DE RENDERIZAÇÃO PIXEL ART (CANVAS)
+    // ==========================================
+    const canvas = document.getElementById('roomCanvas');
+    const ctx = canvas.getContext('2d');
+
+    function drawPixelRect(c, x, y, w, h, color) {
+      c.fillStyle = color;
+      c.fillRect(Math.floor(x), Math.floor(y), Math.floor(w), Math.floor(h));
+    }
+
+    function drawDeviceSprite(targetCtx, type, x, y, scale = 1) {
+      targetCtx.save();
+      targetCtx.translate(x, y);
+      targetCtx.scale(scale, scale);
+
+      if (type === 'router') {
+        // Antenas
+        drawPixelRect(targetCtx, -10, -14, 2, 10, '#0f172a');
+        drawPixelRect(targetCtx, 8, -14, 2, 10, '#0f172a');
+        // Corpo
+        drawPixelRect(targetCtx, -14, -4, 28, 8, '#334155');
+        drawPixelRect(targetCtx, -13, -3, 26, 6, '#f8fafc');
+        // LEDs
+        drawPixelRect(targetCtx, -10, -1, 2, 2, '#10b981');
+        drawPixelRect(targetCtx, -6, -1, 2, 2, '#38bdf8');
+        drawPixelRect(targetCtx, -2, -1, 2, 2, '#f59e0b');
+      } else if (type === 'tv') {
+        // Moldura
+        drawPixelRect(targetCtx, -24, -16, 48, 28, '#0f172a');
+        // Tela
+        drawPixelRect(targetCtx, -22, -14, 44, 24, '#1e3a8a');
+        drawPixelRect(targetCtx, -18, -10, 20, 12, '#38bdf8');
+        drawPixelRect(targetCtx, 4, -8, 14, 14, '#0284c7');
+        // Base
+        drawPixelRect(targetCtx, -4, 12, 8, 4, '#475569');
+        drawPixelRect(targetCtx, -12, 16, 24, 2, '#334155');
+      } else if (type === 'camera') {
+        // Suporte
+        drawPixelRect(targetCtx, -3, 4, 6, 8, '#64748b');
+        drawPixelRect(targetCtx, -7, 11, 14, 3, '#475569');
+        // Cabeça
+        drawPixelRect(targetCtx, -8, -8, 16, 13, '#f8fafc');
+        drawPixelRect(targetCtx, -5, -5, 10, 8, '#0f172a');
+        // Lente + LED vermelho
+        drawPixelRect(targetCtx, -2, -2, 4, 4, '#38bdf8');
+        drawPixelRect(targetCtx, 4, -6, 2, 2, '#ef4444');
+      } else if (type === 'laptop') {
+        // Tela
+        drawPixelRect(targetCtx, -15, -14, 30, 18, '#1e293b');
+        drawPixelRect(targetCtx, -13, -12, 26, 14, '#0ea5e9');
+        drawPixelRect(targetCtx, -10, -9, 12, 3, '#e0f2fe');
+        // Teclado base
+        drawPixelRect(targetCtx, -18, 4, 36, 4, '#94a3b8');
+        drawPixelRect(targetCtx, -16, 8, 32, 2, '#475569');
+      } else if (type === 'nas') {
+        drawPixelRect(targetCtx, -12, -14, 24, 28, '#1e293b');
+        drawPixelRect(targetCtx, -10, -12, 20, 24, '#334155');
+        // Baias de HD
+        for (let i = 0; i < 3; i++) {
+          drawPixelRect(targetCtx, -8, -9 + i * 7, 16, 5, '#0f172a');
+          drawPixelRect(targetCtx, 5, -7 + i * 7, 2, 2, '#10b981');
+        }
+      } else if (type === 'speaker') {
+        drawPixelRect(targetCtx, -8, -9, 16, 18, '#334155');
+        drawPixelRect(targetCtx, -7, -8, 14, 16, '#475569');
+        // Anel LED topo
+        drawPixelRect(targetCtx, -6, -9, 12, 2, '#38bdf8');
+      } else if (type === 'fridge') {
+        drawPixelRect(targetCtx, -15, -26, 30, 52, '#cbd5e1');
+        drawPixelRect(targetCtx, -14, -25, 28, 50, '#f1f5f9');
+        // Divisão portas
+        drawPixelRect(targetCtx, -14, -4, 28, 2, '#94a3b8');
+        // Tela smart na porta
+        drawPixelRect(targetCtx, 2, -19, 9, 12, '#0f172a');
+        drawPixelRect(targetCtx, 3, -18, 7, 10, '#38bdf8');
+        // Puxadores
+        drawPixelRect(targetCtx, -3, -16, 2, 9, '#64748b');
+        drawPixelRect(targetCtx, -3, 1, 2, 12, '#64748b');
+      } else if (type === 'lock') {
+        drawPixelRect(targetCtx, -7, -14, 14, 28, '#0f172a');
+        drawPixelRect(targetCtx, -5, -12, 10, 24, '#1e293b');
+        // Teclado numérico
+        drawPixelRect(targetCtx, -3, -9, 6, 8, '#38bdf8');
+        // Maçaneta
+        drawPixelRect(targetCtx, -3, 3, 11, 3, '#cbd5e1');
+      } else if (type === 'plug') {
+        // Tomada na parede
+        drawPixelRect(targetCtx, -7, -7, 14, 14, '#f8fafc');
+        drawPixelRect(targetCtx, -4, -3, 2, 4, '#0f172a');
+        drawPixelRect(targetCtx, 2, -3, 2, 4, '#0f172a');
+        drawPixelRect(targetCtx, -1, 3, 2, 2, '#ef4444');
+      }
+
+      targetCtx.restore();
+    }
+
+    function renderRoomScene() {
+      const room = ROOMS[state.currentRoomIndex];
+      const W = canvas.width;  // 320
+      const H = canvas.height; // 200
+      ctx.clearRect(0, 0, W, H);
+
+      // 1. Parede
+      drawPixelRect(ctx, 0, 0, W, 130, room.palette.wall);
+      // Rodapé
+      drawPixelRect(ctx, 0, 124, W, 6, room.palette.trim);
+
+      // 2. Piso em padrão quadriculado pixel
+      const floorY = 130;
+      const tileSize = 16;
+      for (let y = floorY; y < H; y += tileSize) {
+        for (let x = 0; x < W; x += tileSize) {
+          const isAlt = ((x / tileSize) + (y / tileSize)) % 2 === 0;
+          drawPixelRect(ctx, x, y, tileSize, tileSize, isAlt ? room.palette.floor : room.palette.floorAlt);
+        }
+      }
+
+      // 3. Mobília decorativa por cômodo
+      if (room.id === 'sala') {
+        // Janela noturna
+        drawPixelRect(ctx, 20, 22, 54, 42, '#0f172a');
+        drawPixelRect(ctx, 23, 25, 22, 36, '#1e3a8a');
+        drawPixelRect(ctx, 49, 25, 22, 36, '#1e3a8a');
+        drawPixelRect(ctx, 56, 31, 4, 4, '#fef08a'); // Lua
+        // Rack da TV
+        drawPixelRect(ctx, 45, 112, 135, 24, '#5c3a21');
+        drawPixelRect(ctx, 47, 114, 131, 4, '#784b2a');
+        // Sofá
+        drawPixelRect(ctx, 195, 102, 105, 36, '#334155');
+        drawPixelRect(ctx, 200, 92, 95, 16, '#475569');
+        drawPixelRect(ctx, 192, 108, 10, 30, '#1e293b');
+        drawPixelRect(ctx, 293, 108, 10, 30, '#1e293b');
+      } else if (room.id === 'escritorio') {
+        // Quadro decorativo
+        drawPixelRect(ctx, 32, 26, 44, 30, '#0f172a');
+        drawPixelRect(ctx, 35, 29, 38, 24, '#0284c7');
+        drawPixelRect(ctx, 42, 42, 12, 11, '#10b981');
+        // Mesa de trabalho
+        drawPixelRect(ctx, 68, 116, 175, 8, '#784b2a');
+        drawPixelRect(ctx, 76, 124, 8, 32, '#4a2e19');
+        drawPixelRect(ctx, 226, 124, 8, 32, '#4a2e19');
+        // Estante lateral
+        drawPixelRect(ctx, 255, 58, 48, 82, '#334155');
+        drawPixelRect(ctx, 259, 64, 40, 20, '#1e293b');
+        drawPixelRect(ctx, 259, 90, 40, 20, '#1e293b');
+      } else if (room.id === 'cozinha') {
+        // Armários superiores
+        drawPixelRect(ctx, 122, 24, 110, 32, '#475569');
+        drawPixelRect(ctx, 125, 27, 50, 26, '#64748b');
+        drawPixelRect(ctx, 179, 27, 50, 26, '#64748b');
+        // Porta da cozinha
+        drawPixelRect(ctx, 152, 66, 54, 64, '#5c3a21');
+        drawPixelRect(ctx, 156, 70, 46, 56, '#784b2a');
+        // Bancada
+        drawPixelRect(ctx, 218, 104, 86, 34, '#334155');
+        drawPixelRect(ctx, 216, 100, 90, 5, '#cbd5e1');
+      }
+
+      // 4. Desenhar os dispositivos do cômodo nas coordenadas exatas
+      room.devices.forEach(dev => {
+        const px = (dev.x / 100) * W;
+        const py = (dev.y / 100) * H;
+        drawDeviceSprite(ctx, dev.sprite, px, py, 1.35);
+      });
+    }
+
+    // ==========================================
+    // 5. INTERFACE & INTERATIVIDADE
+    // ==========================================
+    function renderTabs() {
+      const container = document.getElementById('roomTabs');
+      container.innerHTML = '';
+
+      ROOMS.forEach((room, idx) => {
+        const auditedCount = room.devices.filter(d => state.audits[d.id]).length;
+        const total = room.devices.length;
+        const isDone = auditedCount === total;
+
+        const btn = document.createElement('button');
+        btn.className = `room-tab ${idx === state.currentRoomIndex ? 'active' : ''}`;
+        btn.innerHTML = `
+          <span>${room.name}</span>
+          <span class="tab-badge ${isDone ? 'done' : ''}">${auditedCount}/${total}</span>
+        `;
+        btn.onclick = () => {
+          AudioFX.click();
+          state.currentRoomIndex = idx;
+          state.selectedDeviceId = null;
+          renderAll();
+        };
+        container.appendChild(btn);
+      });
+    }
+
+    function renderHotspots() {
+      const layer = document.getElementById('hotspotsLayer');
+      layer.innerHTML = '';
+      const room = ROOMS[state.currentRoomIndex];
+      document.getElementById('roomDescription').textContent = room.desc;
+
+      room.devices.forEach(dev => {
+        const audit = state.audits[dev.id];
+        const spot = document.createElement('div');
+        spot.className = 'hotspot';
+        if (state.selectedDeviceId === dev.id) spot.classList.add('selected');
+        if (audit) spot.classList.add(`audited-${audit.userClass}`);
+
+        spot.style.left = `${dev.x}%`;
+        spot.style.top = `${dev.y}%`;
+
+        let badgeIcon = '🔍';
+        if (audit) {
+          badgeIcon = audit.userClass === 'safe' ? '🛡️' : audit.userClass === 'vuln' ? '⚠️' : '🚨';
+        }
+
+        spot.innerHTML = `
+          <div class="hotspot-ring">${badgeIcon}</div>
+          <div class="hotspot-tag">${dev.name}</div>
+        `;
+
+        spot.onclick = () => {
+          AudioFX.select();
+          state.selectedDeviceId = dev.id;
+          const existing = state.audits[dev.id];
+          state.draftClass = existing ? existing.userClass : null;
+          state.draftOption = existing ? existing.userOption : null;
+          renderHotspots();
+          renderInspector();
+        };
+
+        layer.appendChild(spot);
+      });
+    }
+
+    function renderInspector() {
+      const panel = document.getElementById('inspectorPanel');
+      const room = ROOMS[state.currentRoomIndex];
+      const dev = room.devices.find(d => d.id === state.selectedDeviceId);
+
+      if (!dev) {
+        panel.innerHTML = `
+          <div class="empty-state">
+            <svg width="56" height="56" viewBox="0 0 16 16" shape-rendering="crispEdges">
+              <rect x="3" y="2" width="10" height="12" fill="#334155"/>
+              <rect x="4" y="3" width="8" height="10" fill="#1e293b"/>
+              <rect x="6" y="5" width="4" height="4" fill="#38bdf8"/>
+              <rect x="5" y="10" width="6" height="1" fill="#94a3b8"/>
+            </svg>
+            <h3 class="pixel-font" style="color: var(--text-main); font-size: 1rem;">NENHUM ALVO SELECIONADO</h3>
+            <p style="font-size: 0.85rem; max-width: 280px;">
+              Clique em qualquer dispositivo conectado no cômodo ao lado para ler seus logs de rede, firmware e portas abertas.
+            </p>
+          </div>
+        `;
+        return;
+      }
+
+      const audit = state.audits[dev.id];
+
+      const specsHTML = Object.entries(dev.specs)
+        .map(([k, v]) => `
+          <div class="spec-row">
+            <span class="spec-key">${k}</span>
+            <span class="spec-val">${v}</span>
+          </div>
+        `).join('');
+
+      const optionsHTML = dev.options.map((opt, i) => `
+        <button class="option-card ${state.draftOption === i ? 'selected' : ''}" 
+                ${audit ? 'disabled' : ''} 
+                onclick="selectOption(${i})">
+          <strong>${String.fromCharCode(65 + i)}.</strong> ${opt}
+        </button>
+      `).join('');
+
+      let feedbackHTML = '';
+      if (audit) {
+        const statusLabels = { safe: 'Seguro', vuln: 'Vulnerável', threat: 'Em Ameaça' };
+        let boxType = 'wrong';
+        let title = 'Diagnóstico Incorreto';
+
+        if (audit.isClassCorrect && audit.isOptionCorrect) {
+          boxType = 'correct';
+          title = `Auditoria Perfeita! (+${audit.points} pts)`;
+        } else if (audit.isClassCorrect || audit.isOptionCorrect) {
+          boxType = 'partial';
+          title = `Parcialmente Correto (+${audit.points} pts)`;
+        }
+
+        feedbackHTML = `
+          <div class="feedback-box ${boxType}">
+            <strong style="display:block; margin-bottom:4px;">${title}</strong>
+            <div>Classificação real: <strong>${statusLabels[dev.status]}</strong></div>
+            <p style="margin-top:6px;">${dev.explanation.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')}</p>
+          </div>
+        `;
+      }
+
+      panel.innerHTML = `
+        <div class="device-header">
+          <div class="device-sprite-preview">
+            <canvas id="miniSpriteCanvas" width="48" height="48"></canvas>
+          </div>
+          <div class="device-title">
+            <h2>${dev.name}</h2>
+            <span class="device-ip">IP: ${dev.ip}</span>
+          </div>
+        </div>
+
+        <div class="tech-specs">${specsHTML}</div>
+
+        <div class="logs-box">${dev.log}</div>
+
+        <div>
+          <div class="step-title">1. Classifique o estado de segurança</div>
+          <div class="class-grid">
+            <button class="class-btn safe ${state.draftClass === 'safe' ? 'active' : ''}" 
+                    ${audit ? 'disabled' : ''} onclick="selectClass('safe')">
+              <span>🛡️</span> Seguro
+            </button>
+            <button class="class-btn vuln ${state.draftClass === 'vuln' ? 'active' : ''}" 
+                    ${audit ? 'disabled' : ''} onclick="selectClass('vuln')">
+              <span>⚠️</span> Vulnerável
+            </button>
+            <button class="class-btn threat ${state.draftClass === 'threat' ? 'active' : ''}" 
+                    ${audit ? 'disabled' : ''} onclick="selectClass('threat')">
+              <span>🚨</span> Em Ameaça
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <div class="step-title">2. Escolha a ação recomendada</div>
+          <div class="options-list">${optionsHTML}</div>
+        </div>
+
+        ${!audit ? `
+          <button class="submit-btn" 
+                  ${state.draftClass === null || state.draftOption === null ? 'disabled' : ''} 
+                  onclick="submitAudit()">
+            CONFIRMAR AUDITORIA
+          </button>
+        ` : feedbackHTML}
+      `;
+
+      // Desenhar sprite ampliado no card do inspetor
+      const miniCanvas = document.getElementById('miniSpriteCanvas');
+      if (miniCanvas) {
+        const mCtx = miniCanvas.getContext('2d');
+        mCtx.clearRect(0, 0, 48, 48);
+        drawDeviceSprite(mCtx, dev.sprite, 24, 26, 1.1);
+      }
+    }
+
+    window.selectClass = (cls) => {
+      AudioFX.click();
+      state.draftClass = cls;
+      renderInspector();
+    };
+
+    window.selectOption = (idx) => {
+      AudioFX.click();
+      state.draftOption = idx;
+      renderInspector();
+    };
+
+    window.submitAudit = () => {
+      const room = ROOMS[state.currentRoomIndex];
+      const dev = room.devices.find(d => d.id === state.selectedDeviceId);
+      if (!dev || state.draftClass === null || state.draftOption === null) return;
+
+      const isClassCorrect = state.draftClass === dev.status;
+      const isOptionCorrect = state.draftOption === dev.correctOption;
+
+      let points = 0;
+      if (isClassCorrect) points += 60;
+      if (isOptionCorrect) points += 40;
+
+      state.audits[dev.id] = {
+        userClass: state.draftClass,
+        userOption: state.draftOption,
+        isClassCorrect,
+        isOptionCorrect,
+        points
+      };
+
+      state.score += points;
+
+      if (isClassCorrect && isOptionCorrect) {
+        AudioFX.success();
+      } else {
+        AudioFX.error();
+      }
+
+      updateHUD();
+      renderTabs();
+      renderHotspots();
+      renderInspector();
+
+      const totalAudited = Object.keys(state.audits).length;
+      if (totalAudited === 9) {
+        document.getElementById('finishEarlyBtn').style.display = 'block';
+        setTimeout(showFinalReport, 1100);
+      }
+    };
+
+    function updateHUD() {
+      const totalAudited = Object.keys(state.audits).length;
+      document.getElementById('hudProgress').textContent = `${totalAudited} / 9`;
+      document.getElementById('hudScore').textContent = `${state.score} pts`;
+    }
+
+    function showFinalReport() {
+      const maxScore = 900;
+      const pct = Math.round((state.score / maxScore) * 100);
+      document.getElementById('finalScoreCircle').textContent = `${pct}%`;
+
+      let safeCount = 0, vulnCount = 0, threatCount = 0;
+      ROOMS.forEach(r => r.devices.forEach(d => {
+        if (d.status === 'safe') safeCount++;
+        if (d.status === 'vuln') vulnCount++;
+        if (d.status === 'threat') threatCount++;
+      }));
+
+      document.getElementById('sumSafe').textContent = safeCount;
+      document.getElementById('sumVuln').textContent = vulnCount;
+      document.getElementById('sumThreat').textContent = threatCount;
+
+      let verdict = '';
+      if (pct >= 85) {
+        verdict = 'Excelente trabalho, especialista! Você identificou com precisão as brechas de configuração, dispositivos comprometidos e aplicou as mitigações ideais.';
+      } else if (pct >= 55) {
+        verdict = 'Bom trabalho! A maioria dos riscos foi contida, mas revise a diferença entre falhas latentes (vulnerável) e ataques em andamento (em ameaça).';
+      } else {
+        verdict = 'A rede ainda corre riscos! Lembre-se: senhas padrão e protocolos antigos tornam um aparelho vulnerável, enquanto tráfego anômalo indica ameaça ativa.';
+      }
+
+      document.getElementById('finalVerdict').textContent = verdict;
+      document.getElementById('reportModal').classList.add('open');
+    }
+
+    document.getElementById('finishEarlyBtn').onclick = showFinalReport;
+
+    window.resetGame = () => {
+      AudioFX.click();
+      state = {
+        currentRoomIndex: 0,
+        selectedDeviceId: null,
+        draftClass: null,
+        draftOption: null,
+        score: 0,
+        audits: {}
+      };
+      document.getElementById('reportModal').classList.remove('open');
+      document.getElementById('finishEarlyBtn').style.display = 'none';
+      updateHUD();
+      renderAll();
+    };
+
+    function renderAll() {
+      renderTabs();
+      renderRoomScene();
+      renderHotspots();
+      renderInspector();
+    }
+
+    // Inicialização
+    renderAll();
+  </script>
+</body>
+</html>
